@@ -96,6 +96,7 @@ lazy val kyoJVM = project
         `kyo-zio`.jvm,
         `kyo-cats`.jvm,
         `kyo-combinators`.jvm,
+        `kyo-container`.jvm,
         `kyo-examples`.jvm
     )
 
@@ -356,6 +357,16 @@ lazy val `kyo-combinators` =
             `kyo-settings`
         )
         .jsSettings(`js-settings`)
+
+lazy val `kyo-container` =
+    crossProject(JVMPlatform)
+        .withoutSuffixFor(JVMPlatform)
+        .crossType(CrossType.Full)
+        .in(file("kyo-container"))
+        .dependsOn(`kyo-core`)
+        .settings(
+            `kyo-settings`
+        )
 
 lazy val `kyo-examples` =
     crossProject(JVMPlatform)
