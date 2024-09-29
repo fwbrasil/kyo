@@ -5,22 +5,22 @@ import kyo.debug.Debug
 case class Container(id: String) extends AnyVal:
 
     def state(using Frame): Container.State < (Async & Abort[ContainerUnavailable]) =
-        Container.useService(_.state(id))
+        Container.Service.use(_.state(id))
 
     def stop(using Frame): Unit < (Async & Abort[ContainerUnavailable]) =
-        Container.useService(_.stop(id))
+        Container.Service.use(_.stop(id))
 
     def execute(command: String)(using Frame): String < (Async & Abort[ContainerUnavailable]) =
-        Container.useService(_.execute(id, command))
+        Container.Service.use(_.execute(id, command))
 
     def copyTo(source: Path, destination: Path)(using Frame): Unit < (Async & Abort[ContainerUnavailable]) =
-        Container.useService(_.copyTo(id, source, destination))
+        Container.Service.use(_.copyTo(id, source, destination))
 
     def copyFrom(source: Path, destination: Path)(using Frame): Unit < (Async & Abort[ContainerUnavailable]) =
-        Container.useService(_.copyFrom(id, source, destination))
+        Container.Service.use(_.copyFrom(id, source, destination))
 
     def logs(using Frame): String < (Async & Abort[ContainerUnavailable]) =
-        Container.useService(_.logs(id))
+        Container.Service.use(_.logs(id))
 
 end Container
 
@@ -34,63 +34,6 @@ end ContainerUnavailable
 object Container:
     enum State derives CanEqual:
         case Running, Stopped, Failed
-
-    trait Service:
-        def create(config: Config)(using Frame): String < (Async & Abort[ContainerUnavailable])
-        def start(id: String)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
-        def stop(id: String)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
-        def state(id: String)(using Frame): State < (Async & Abort[ContainerUnavailable])
-        def execute(id: String, command: String)(using Frame): String < (Async & Abort[ContainerUnavailable])
-        def copyTo(id: String, source: Path, destination: Path)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
-        def copyFrom(id: String, source: Path, destination: Path)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
-        def logs(id: String)(using Frame): String < (Async & Abort[ContainerUnavailable])
-    end Service
-
-    object Service:
-        val docker: Service = ProcessService("docker")
-        val podman: Service = ProcessService("podman")
-
-        class ProcessService(commandName: String) extends Service:
-            private def runCommand(args: String*)(using frame: Frame) =
-                println(args.mkString(" "))
-                Abort.run[Throwable](Process.Command((commandName +: args)*).text)
-                    .map {
-                        case Result.Error(ex) =>
-                            println(ex)
-                            Abort.fail(ContainerUnavailable(frame, ex))
-                        case Result.Success(v) =>
-                            println(v)
-                            v
-                    }
-            end runCommand
-
-            def create(config: Config)(using Frame) =
-                val createArgs = Seq("create") ++
-                    config.name.map(n => Seq("--name", n)).getOrElse(Seq.empty) ++
-                    config.ports.flatMap(p => Seq("-p", s"${p.host}:${p.container}")) ++
-                    config.env.flatMap((k, v) => Seq("-e", s"$k=$v")) ++
-                    config.volumes.flatMap(v => Seq("-v", s"${v.host}:${v.container}")) ++
-                    Seq(config.image)
-                runCommand(createArgs*).map(_.trim)
-            end create
-
-            def start(id: String)(using Frame) = runCommand("start", id).unit
-            def stop(id: String)(using Frame)  = runCommand("stop", id).unit
-            def state(id: String)(using Frame) =
-                runCommand("inspect", "-f", "{{.State.Status}}", id).map {
-                    case "running" => State.Running
-                    case "exited"  => State.Stopped
-                    case _         => State.Failed
-                }
-            def execute(id: String, command: String)(using Frame) =
-                runCommand("exec", id, "sh", "-c", command)
-            def copyTo(id: String, source: Path, destination: Path)(using Frame) =
-                runCommand("cp", source.toString, s"$id:${destination.toString}").unit
-            def copyFrom(id: String, source: Path, destination: Path)(using Frame) =
-                runCommand("cp", s"$id:${source.toString}", destination.toString).unit
-            def logs(id: String)(using Frame) = runCommand("logs", id)
-        end ProcessService
-    end Service
 
     case class Config(
         image: String,
@@ -149,19 +92,8 @@ object Container:
         end WaitFor
     end Config
 
-    private val local = Local.init[Maybe[Service]](Maybe.empty)
-
-    def letService[A, S](service: Service)(v: => A < S)(using Frame): A < S =
-        local.let(Maybe(service))(v)
-
-    def useService[A, S](f: Service => A < S)(using Frame): A < (Async & Abort[ContainerUnavailable] & S) =
-        local.use {
-            case Maybe.Empty            => detectService.map(f)
-            case Maybe.Defined(service) => f(service)
-        }
-
     def init(config: Config)(using Frame): Container < (Async & Abort[ContainerUnavailable]) =
-        useService { service =>
+        Service.use { service =>
             for
                 id <- service.create(config)
                 _  <- service.start(id)
@@ -187,17 +119,81 @@ object Container:
             waitFor
         ))
 
-    private def detectService(using frame: Frame): Service < (IO & Abort[ContainerUnavailable]) =
-        local.use {
-            case Maybe.Defined(service) => service
-            case Maybe.Empty =>
-                for
-                    podmanAvailable <- Process.Command("podman", "version").waitFor(1.second)
-                    dockerAvailable <- Process.Command("docker", "version").waitFor(1.second)
-                yield (dockerAvailable, podmanAvailable) match
-                    case (true, _) => Service.docker
-                    case (_, true) => Service.podman
-                    case _         => Abort.fail(ContainerUnavailable(frame, "No supported container service found"))
-        }
+    abstract class Service:
+        def create(config: Config)(using Frame): String < (Async & Abort[ContainerUnavailable])
+        def start(id: String)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
+        def stop(id: String)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
+        def state(id: String)(using Frame): State < (Async & Abort[ContainerUnavailable])
+        def execute(id: String, command: String)(using Frame): String < (Async & Abort[ContainerUnavailable])
+        def copyTo(id: String, source: Path, destination: Path)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
+        def copyFrom(id: String, source: Path, destination: Path)(using Frame): Unit < (Async & Abort[ContainerUnavailable])
+        def logs(id: String)(using Frame): String < (Async & Abort[ContainerUnavailable])
+    end Service
+
+    object Service:
+        val docker: Service = ProcessService("docker")
+        val podman: Service = ProcessService("podman")
+
+        private val local = Local.init[Maybe[Service]](Maybe.empty)
+
+        def let[A, S](service: Service)(v: => A < S)(using Frame): A < S =
+            local.let(Maybe(service))(v)
+
+        def use[A, S](f: Service => A < S)(using Frame): A < (Async & Abort[ContainerUnavailable] & S) =
+            local.use {
+                case Maybe.Empty            => detectService.map(f)
+                case Maybe.Defined(service) => f(service)
+            }
+
+        class ProcessService(commandName: String) extends Service:
+            private def runCommand(args: String*)(using frame: Frame) =
+                println(args.mkString(" "))
+                Abort.run[Throwable](Process.Command((commandName +: args)*).text)
+                    .map {
+                        case Result.Error(ex) =>
+                            println(ex)
+                            Abort.fail(ContainerUnavailable(frame, ex))
+                        case Result.Success(v) =>
+                            println(v)
+                            v
+                    }
+            end runCommand
+
+            def create(config: Config)(using Frame) =
+                val createArgs = Seq("create") ++
+                    config.name.map(n => Seq("--name", n)).getOrElse(Seq.empty) ++
+                    config.ports.flatMap(p => Seq("-p", s"${p.host}:${p.container}")) ++
+                    config.env.flatMap((k, v) => Seq("-e", s"$k=$v")) ++
+                    config.volumes.flatMap(v => Seq("-v", s"${v.host}:${v.container}")) ++
+                    Seq(config.image)
+                runCommand(createArgs*).map(_.trim)
+            end create
+
+            def start(id: String)(using Frame) = runCommand("start", id).unit
+            def stop(id: String)(using Frame)  = runCommand("stop", id).unit
+            def state(id: String)(using Frame) =
+                runCommand("inspect", "-f", "{{.State.Status}}", id).map {
+                    case "running" => State.Running
+                    case "exited"  => State.Stopped
+                    case _         => State.Failed
+                }
+            def execute(id: String, command: String)(using Frame) =
+                runCommand("exec", id, "sh", "-c", command)
+            def copyTo(id: String, source: Path, destination: Path)(using Frame) =
+                runCommand("cp", source.toString, s"$id:${destination.toString}").unit
+            def copyFrom(id: String, source: Path, destination: Path)(using Frame) =
+                runCommand("cp", s"$id:${source.toString}", destination.toString).unit
+            def logs(id: String)(using Frame) = runCommand("logs", id)
+        end ProcessService
+
+        private def detectService(using frame: Frame): Service < (IO & Abort[ContainerUnavailable]) =
+            for
+                podmanAvailable <- Process.Command("podman", "version").waitFor(1.second)
+                dockerAvailable <- Process.Command("docker", "version").waitFor(1.second)
+            yield
+                if dockerAvailable then Service.docker
+                else if podmanAvailable then Service.podman
+                else Abort.fail(ContainerUnavailable(frame, "No supported container service found"))
+    end Service
 
 end Container
