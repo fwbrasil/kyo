@@ -19,7 +19,7 @@ import scala.annotation.targetName
   * @param v
   *   The effect that produces acknowledgments and emits chunks of values
   */
-final case class Stream[V, -S](v: Ack < (Emit[Chunk[V]] & S)):
+final class Stream[V, -S](v: Ack < (Emit[Chunk[V]] & S)):
 
     /** Returns the effect that produces acknowledgments and emits chunks of values. */
     def emit: Ack < (Emit[Chunk[V]] & S) = v
@@ -257,6 +257,13 @@ final case class Stream[V, -S](v: Ack < (Emit[Chunk[V]] & S)):
                 }
         ))
     end changes
+
+    def runPoll(using tag: Tag[Emit[Chunk[V]]], frame: Frame): Maybe[(V, Stream[V, S])] < S =
+        ArrowEffect.handle(tag, v.as(Absent))(
+            [C] =>
+                (input, cont) =>
+                    Present((input, Stream(cont(Continue()))))
+        )
 
     /** Runs the stream and discards all emitted values.
       *
