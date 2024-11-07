@@ -281,34 +281,98 @@ object Queue:
     /** WARNING: Low-level API meant for integrations, libraries, and performance-sensitive code. See AllowUnsafe for more details. */
     object Unsafe:
 
-        abstract private class Closeable[A](initFrame: Frame) extends Unsafe[A]:
+        abstract private class Base[A](initFrame: Frame) extends Unsafe[A]:
             import AllowUnsafe.embrace.danger
-            final protected val _closed = AtomicRef.Unsafe.init(Maybe.empty[Result.Error[Closed]])
+            final private val state                 = AtomicInt.Unsafe.init(0)
+            @volatile final private var closedError = Maybe.empty[Result.Error[Closed]]
 
             final def close()(using frame: Frame, allow: AllowUnsafe) =
-                val fail = Result.Fail(Closed("Queue", initFrame, frame))
-                Maybe.when(_closed.cas(Maybe.empty, Maybe(fail)))(_drain())
+                @tailrec def loop(): Maybe[Seq[A]] =
+                    val s = state.get()
+                    if s == -1 then
+                        Maybe.empty
+                    else if !state.cas(s, -1) then
+                        loop()
+                    else
+                        closedError = Maybe(Result.Fail(Closed("Queue", initFrame, frame)))
+                        Maybe(drain())
+                    end if
+                end loop
+                loop()
             end close
 
-            final def closed()(using AllowUnsafe) = _closed.get().isDefined
+            final def closed()(using AllowUnsafe) = state.get() == -1
 
-            final def drain()(using AllowUnsafe): Result[Closed, Seq[A]] = op(_drain())
+            final def drain()(using AllowUnsafe): Result[Closed, Seq[A]] =
+                @tailrec def loop(acc: Chunk[A]): Result[Closed, Seq[A]] =
+                    this.poll() match
+                        case Result.Success(maybe) =>
+                            maybe match
+                                case Absent     => Result.success(acc)
+                                case Present(v) => loop(acc.append(v))
+                        case result: Result.Error[Closed] @unchecked =>
+                            result
+                end loop
+                loop(Chunk.empty)
+            end drain
 
-            protected def _drain(): Seq[A]
-
-            protected inline def op[A](inline f: => A): Result[Closed, A] =
-                _closed.get().getOrElse(Result(f))
-
-            protected inline def offerOp[A](inline f: => Boolean, inline raceRepair: => Boolean): Result[Closed, Boolean] =
-                _closed.get().getOrElse {
-                    val result = f
-                    if result && _closed.get().isDefined then
-                        Result(raceRepair)
+            protected /*inline*/ def op[A]( /*inline*/ f: => A): Result[Closed, A] =
+                @tailrec def loop(): Result[Closed, A] =
+                    val s = state.get()
+                    if s == -1 then
+                        closedError.getOrElse(loop())
                     else
-                        Result(result)
+                        Result(f)
                     end if
-                }
-        end Closeable
+                end loop
+                loop()
+            end op
+
+            protected /*inline*/ def offerOp[A]( /*inline*/ f: => Boolean, /*inline*/ raceRepair: => Boolean): Result[Closed, Boolean] =
+                @tailrec def loop(): Result[Closed, Boolean] =
+                    val s = state.get()
+                    if s == -1 then
+                        closedError.getOrElse(loop())
+                    else if s == this.capacity then
+                        Result.success(false)
+                    else if !state.cas(s, s + 1) then
+                        loop()
+                    else
+                        val result = f
+                        require(result)
+                        if state.get() == -1 then
+                            Result(raceRepair)
+                        else
+                            Result.success(result)
+                        end if
+                    end if
+                end loop
+                loop()
+            end offerOp
+
+            protected inline def pollOp(inline f: => Maybe[A]): Result[Closed, Maybe[A]] =
+                @tailrec def loop(): Result[Closed, Maybe[A]] =
+                    val s = state.get()
+                    if s == -1 then
+                        closedError.getOrElse(loop())
+                    else if s == 0 then
+                        Result.success(Maybe.empty)
+                    else if !state.cas(s, s - 1) then
+                        loop()
+                    else
+                        Result {
+                            def resultLoop(): Maybe[A] =
+                                val r = f
+                                if r.isEmpty then resultLoop()
+                                else r
+                            end resultLoop
+                            resultLoop()
+                        }
+                    end if
+                end loop
+                loop()
+            end pollOp
+        end Base
 
         def init[A](capacity: Int, access: Access = Access.MultiProducerMultiConsumer)(using
             initFrame: Frame,
@@ -316,26 +380,24 @@ object Queue:
         ): Unsafe[A] =
             capacity match
                 case _ if capacity <= 0 =>
-                    new Closeable[A](initFrame):
+                    new Base[A](initFrame):
                         def capacity                       = 0
                         def size()(using AllowUnsafe)      = op(0)
                         def empty()(using AllowUnsafe)     = op(true)
                         def full()(using AllowUnsafe)      = op(true)
-                        def offer(v: A)(using AllowUnsafe) = op(false)
-                        def poll()(using AllowUnsafe)      = op(Maybe.empty)
+                        def offer(v: A)(using AllowUnsafe) = offerOp(false, false)
+                        def poll()(using AllowUnsafe)      = pollOp(Maybe.empty)
                         def peek()(using AllowUnsafe)      = op(Maybe.empty)
-                        def _drain()                       = Seq.empty
                 case 1 =>
-                    new Closeable[A](initFrame):
+                    new Base[A](initFrame):
                         private val state                  = AtomicRef.Unsafe.init(Maybe.empty[A])
                         def capacity                       = 1
                         def empty()(using AllowUnsafe)     = op(state.get().isEmpty)
                         def size()(using AllowUnsafe)      = op(if state.get().isEmpty then 0 else 1)
                         def full()(using AllowUnsafe)      = op(state.get().isDefined)
                         def offer(v: A)(using AllowUnsafe) = offerOp(state.cas(Maybe.empty, Maybe(v)), !state.cas(Maybe(v), Maybe.empty))
-                        def poll()(using AllowUnsafe)      = op(state.getAndSet(Maybe.empty))
+                        def poll()(using AllowUnsafe)      = pollOp(state.getAndSet(Maybe.empty))
                         def peek()(using AllowUnsafe)      = op(state.get())
-                        def _drain()                       = state.getAndSet(Maybe.empty).toList
                 case Int.MaxValue =>
                     Unbounded.Unsafe.init(access).safe
                 case _ =>
@@ -354,7 +416,7 @@ object Queue:
                                 fromJava(new SpmcArrayQueue[A](capacity), capacity)
 
         def fromJava[A](q: java.util.Queue[A], _capacity: Int = Int.MaxValue)(using initFrame: Frame, allow: AllowUnsafe): Unsafe[A] =
-            new Closeable[A](initFrame):
+            new Base[A](initFrame):
                 def capacity                   = _capacity
                 def size()(using AllowUnsafe)  = op(q.size())
                 def empty()(using AllowUnsafe) = op(q.isEmpty())
@@ -370,19 +432,8 @@ object Queue:
                                 // The item will only be removed when the queue object itself is garbage collected.
                                 !q.contains(v)
                     )
-                def poll()(using AllowUnsafe) = op(Maybe(q.poll()))
+                def poll()(using AllowUnsafe) = pollOp(Maybe(q.poll()))
                 def peek()(using AllowUnsafe) = op(Maybe(q.peek()))
-                def _drain() =
-                    val b = Seq.newBuilder[A]
-                    @tailrec def loop(): Unit =
-                        val value = q.poll()
-                        if !isNull(value) then
-                            b.addOne(value)
-                            loop()
-                    end loop
-                    loop()
-                    b.result()
-                end _drain
 
     end Unsafe
 

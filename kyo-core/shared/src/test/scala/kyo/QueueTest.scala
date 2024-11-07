@@ -338,7 +338,7 @@ class QueueTest extends Test:
 
             def testCapacity(accessType: Access) =
                 List(3, 7, 15, 31).foreach { requestedCapacity =>
-                    s"$accessType with requested capacity $requestedCapacity" in pendingUntilFixed {
+                    s"$accessType with requested capacity $requestedCapacity" in {
                         val queue          = Queue.Unsafe.init[Int](requestedCapacity, accessType)
                         val actualCapacity = queue.capacity
 
@@ -351,7 +351,6 @@ class QueueTest extends Test:
                             actualCapacity >= requestedCapacity,
                             s"Actual capacity $actualCapacity is less than requested capacity $requestedCapacity"
                         )
-                        ()
                     }
                 }
 
