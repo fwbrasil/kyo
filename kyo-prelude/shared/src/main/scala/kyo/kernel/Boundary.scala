@@ -55,7 +55,13 @@ object Boundary:
 
         val r = flatten(TypeRepr.of[Ctx]).filter(tpe => !s.exists(tpe <:< _))
 
-        val nok = r.filterNot(tpe => (tpe <:< TypeRepr.of[ContextEffect[?]]) || (tpe =:= TypeRepr.of[Any]))
+        val nok = flatten(TypeRepr.of[Ctx]).filter(tpe =>
+            !s.exists(tpe <:< _) && !(tpe =:= TypeRepr.of[Any]) &&
+                (tpe.dealias.baseType(TypeRepr.of[ArrowEffect[?, ?]].typeSymbol).toString() != "NoType" || !(tpe <:< TypeRepr.of[
+                    ContextEffect[?]
+                ]))
+        )
+
         if nok.nonEmpty then
             report.errorAndAbort(
                 s"""|The computation you're trying to fork with Async has pending effects that aren't supported: 

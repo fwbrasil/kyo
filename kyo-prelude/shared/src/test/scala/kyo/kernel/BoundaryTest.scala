@@ -11,10 +11,20 @@ class BoundaryTest extends Test:
     sealed trait TestEffect3      extends ContextEffect[Boolean]
     sealed trait NotContextEffect extends ArrowEffect[Const[Int], Const[Int]]
 
+    opaque type OpaqueEffect <: TestEffect1                                = TestEffect1
+    opaque type OpaqueNotContextEffect <: (NotContextEffect & TestEffect1) = NotContextEffect & TestEffect1
+    object Nested:
+        opaque type OpaqueEffect <: TestEffect1                                = TestEffect1
+        opaque type OpaqueHiddenEffect                                         = TestEffect1
+        opaque type OpaqueNotContextEffect <: (NotContextEffect & TestEffect1) = NotContextEffect & TestEffect1
+    end Nested
+
     "apply" - {
         "creates a boundary for context effects" in {
-            val boundary = Boundary.derive[TestEffect1 & TestEffect2, Any]
-            assert(boundary.isInstanceOf[Boundary[TestEffect1 & TestEffect2, Any]])
+            Boundary.derive[TestEffect1 & TestEffect2, Any]
+            Boundary.derive[OpaqueEffect, Any]
+            Boundary.derive[Nested.OpaqueEffect, Any]
+            succeed
         }
 
         "fails compilation for non-context effects" in {
@@ -24,6 +34,12 @@ class BoundaryTest extends Test:
 
         "fails compilation for non-context effect traits" in {
             assertDoesNotCompile("Boundary.derive[NotContextEffect, Any]")
+        }
+        "fails compilation for non-context opaque types" in {
+            assertDoesNotCompile("Boundary.derive[OpaqueNotContextEffect, Any]")
+            assertDoesNotCompile("Boundary.derive[Nested.OpaqueHiddenEffect, Any]")
+            assertDoesNotCompile("Boundary.derive[Nested.OpaqueNotContextEffect, Any]")
+            succeed
         }
     }
 
