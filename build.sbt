@@ -99,6 +99,7 @@ lazy val kyoJVM = project
         `kyo-stats-otel`.jvm,
         `kyo-cache`.jvm,
         `kyo-reactive-streams`.jvm,
+        `kyo-aeron`.jvm,
         `kyo-sttp`.jvm,
         `kyo-tapir`.jvm,
         `kyo-caliban`.jvm,
@@ -350,9 +351,24 @@ lazy val `kyo-reactive-streams` =
         .settings(
             `kyo-settings`,
             libraryDependencies ++= Seq(
-                "org.reactivestreams" % "reactive-streams" % "1.0.4",
-                "org.reactivestreams" % "reactive-streams-tck" % "1.0.4" % Test,
-                "org.scalatestplus" %% "testng-7-5" % "3.2.17.0" % Test
+                "org.reactivestreams" % "reactive-streams"     % "1.0.4",
+                "org.reactivestreams" % "reactive-streams-tck" % "1.0.4"    % Test,
+                "org.scalatestplus"  %% "testng-7-5"           % "3.2.17.0" % Test
+            )
+        )
+        .jvmSettings(mimaCheck(false))
+
+lazy val `kyo-aeron` =
+    crossProject(JVMPlatform)
+        .withoutSuffixFor(JVMPlatform)
+        .crossType(CrossType.Full)
+        .in(file("kyo-aeron"))
+        .dependsOn(`kyo-core`)
+        .settings(
+            `kyo-settings`,
+            libraryDependencies ++= Seq(
+                "io.aeron" % "aeron-client" % "1.42.1",
+                "io.aeron" % "aeron-driver" % "1.42.1"
             )
         )
         .jvmSettings(mimaCheck(false))
