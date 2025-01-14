@@ -400,7 +400,7 @@ lazy val `kyo-sttp` =
         .jvmSettings(mimaCheck(false))
 
 lazy val `kyo-tapir` =
-    crossProject(JVMPlatform)
+    crossProject(JVMPlatform, NativePlatform)
         .withoutSuffixFor(JVMPlatform)
         .crossType(CrossType.Full)
         .in(file("kyo-tapir"))
@@ -408,10 +408,15 @@ lazy val `kyo-tapir` =
         .dependsOn(`kyo-sttp`)
         .settings(
             `kyo-settings`,
-            libraryDependencies += "com.softwaremill.sttp.tapir" %% "tapir-core"         % "1.11.12",
-            libraryDependencies += "com.softwaremill.sttp.tapir" %% "tapir-netty-server" % "1.11.12"
+            libraryDependencies += "com.softwaremill.sttp.tapir" %% "tapir-core"         % "1.11.12"
         )
-        .jvmSettings(mimaCheck(false))
+        .jvmSettings(
+            mimaCheck(false),
+            libraryDependencies += "com.softwaremill.sttp.tapir" %% "tapir-netty-server" % "1.11.12"
+        ).nativeSettings(
+            `native-settings`,
+            libraryDependencies += "com.github.lolgab" %%% "snunit-tapir" % "0.10.3"
+        )
 
 lazy val `kyo-caliban` =
     crossProject(JVMPlatform)

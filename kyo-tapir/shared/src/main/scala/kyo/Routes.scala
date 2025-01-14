@@ -2,10 +2,9 @@ package kyo
 
 import kyo.internal.KyoSttpMonad
 import kyo.internal.KyoSttpMonad.*
+import kyo.server.RoutesPlatformSpecific
 import sttp.tapir.*
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.server.netty.NettyKyoServer
-import sttp.tapir.server.netty.NettyKyoServerBinding
 
 /** Represents a single route with a server endpoint. */
 case class Route(endpoint: ServerEndpoint[Any, KyoSttpMonad.M]) extends AnyVal
@@ -13,31 +12,32 @@ case class Route(endpoint: ServerEndpoint[Any, KyoSttpMonad.M]) extends AnyVal
 /** Represents an effectful collection of routes with asynchronous capabilities. */
 opaque type Routes <: (Emit[Route] & Async) = Emit[Route] & Async
 
-object Routes:
+object Routes extends RoutesPlatformSpecific:
 
-    /** Runs the routes using the default NettyKyoServer.
+    /** Runs the routes using the default Server.
       *
       * @param v
       *   The routes to run
       * @return
-      *   A NettyKyoServerBinding wrapped in an asynchronous effect
+      *   A ServerBinding wrapped in an asynchronous effect
       */
-    def run[A, S](v: Unit < (Routes & S))(using Frame): NettyKyoServerBinding < (Async & S) =
-        run[A, S](NettyKyoServer())(v)
+    def run[A, S](v: Unit < (Routes & S))(using Frame): ServerBinding < (Async & S) =
+        run[A, S](Server())(v)
 
-    /** Runs the routes using a specified NettyKyoServer.
+    /** Runs the routes using a specified Server.
       *
       * @param server
-      *   The NettyKyoServer to use
+      *   The Server to use
       * @param v
       *   The routes to run
       * @return
-      *   A NettyKyoServerBinding wrapped in an asynchronous effect
+      *   A ServerBinding wrapped in an asynchronous effect
       */
-    def run[A, S](server: NettyKyoServer)(v: Unit < (Routes & S))(using Frame): NettyKyoServerBinding < (Async & S) =
-        Emit.run[Route].apply[Unit, Async & S](v).map { (routes, _) =>
-            IO(server.addEndpoints(routes.toSeq.map(_.endpoint).toList).start()): NettyKyoServerBinding < (Async & S)
-        }
+    def run[A, S](server: Server)(v: Unit < (Routes & S))(using Frame): ServerBinding < (Async & S) =
+        // Emit.run[Route].apply[Unit, Async & S](v).map { (routes, _) =>
+        //     IO(server.addEndpoints(routes.toSeq.map(_.endpoint).toList).start()): ServerBinding < (Async & S)
+        // }
+        ???
     end run
 
     /** Adds a new route to the collection.
