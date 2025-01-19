@@ -96,14 +96,14 @@ class RecordTest extends Test:
         }
 
         "incorrect type access should not compile" in {
-            assertDoesNotCompile("""
+            typeCheckProbe("""
                 val record = "name" ~ "Bob"
                 val name: Int = record.name
             """)
         }
 
         "non-existent field access should not compile" in {
-            assertDoesNotCompile("""
+            typeCheckProbe("""
                 val record = "name" ~ "Bob"
                 val city = record.city
             """)
@@ -278,7 +278,7 @@ class RecordTest extends Test:
                 "name" ~ "Frank" & "age" ~ 40
             val compacted = record.compact
             assert(compacted.size == 1)
-            assertDoesNotCompile("""
+            typeCheckProbe("""
                 compacted.age
             """)
         }
@@ -365,7 +365,7 @@ class RecordTest extends Test:
         }
 
         "preserves type safety" in {
-            assertDoesNotCompile("""
+            typeCheckProbe("""
                 val partial: Record["name" ~ String] = "age" ~ 30
             """)
         }
@@ -427,7 +427,7 @@ class RecordTest extends Test:
             val record1 = "name" ~ "Alice" & "age" ~ 30
             val record2 = "name" ~ "Alice" & "years" ~ 30
 
-            assertDoesNotCompile("""
+            typeCheckProbe("""
                 assert(record1 != record2)
             """)
         }
@@ -436,7 +436,7 @@ class RecordTest extends Test:
             case class NoEqual(x: Int)
             val record1: Record["test" ~ NoEqual] = "test" ~ NoEqual(1)
             val record2                           = "test" ~ NoEqual(1)
-            assertDoesNotCompile("""
+            typeCheckProbe("""
                 assert(record1 == record2)
             """)
         }
@@ -527,13 +527,13 @@ class RecordTest extends Test:
 
             "cannot call methods that take malformed types" in {
                 def takesMalformed(r: MalformedRecord): String = r.name
-                assertDoesNotCompile("""
+                typeCheckProbe("""
                     takesMalformed("name" ~ "test" & "age" ~ 42)
                 """)
             }
 
             "cannot return malformed types" in {
-                assertDoesNotCompile("""
+                typeCheckProbe("""
                     def returnsMalformed(): MalformedRecord =
                         "name" ~ "test" & "age" ~ 42
                 """)
@@ -583,19 +583,19 @@ class RecordTest extends Test:
             import Record.AsFields
 
             "summoning AsFields instance" in {
-                assertDoesNotCompile("""
+                typeCheckProbe("""
                     summon[AsFields[Int & "name" ~ String & "age" ~ Int]]
                 """)
             }
 
             "AsFields with multiple raw types" in {
-                assertDoesNotCompile("""
+                typeCheckProbe("""
                     AsFields[Int & Boolean & "value" ~ String & String]
                 """)
             }
 
             "AsFields with duplicate field names" in {
-                assertDoesNotCompile("""
+                typeCheckProbe("""
                    AsFields[Int & "value" ~ String & "value" ~ Int]
                 """)
             }
@@ -603,7 +603,7 @@ class RecordTest extends Test:
             "compact with AsFields" in {
                 val record = ("name" ~ "test" & "age" ~ 42)
                     .asInstanceOf[Record[Int & "name" ~ String & "age" ~ Int]]
-                assertDoesNotCompile("""
+                typeCheckProbe("""
                     record.compact
                 """)
             }

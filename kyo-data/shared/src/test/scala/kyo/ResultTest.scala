@@ -202,7 +202,7 @@ class ResultTest extends Test:
             assert(Result.succeed(1).getOrThrow == 1)
         }
         "can't be called for Failure" in {
-            assertDoesNotCompile("Result.error(ex).get")
+            typeCheckProbe("Result.error(ex).get")
         }
         "throws an exception for Panic" in {
             assertThrows[Exception](Result.panic(ex).getOrThrow)
@@ -230,7 +230,7 @@ class ResultTest extends Test:
             assert(Result.succeed(1).getOrThrow == 1)
         }
         "doesn't compile for non-Throwable Failure" in {
-            assertDoesNotCompile("Result.fail(1).getOrThrow")
+            typeCheckProbe("Result.fail(1).getOrThrow")
         }
         "throws for Throwable Failure" in {
             assert(Result.catching[Exception](Result.fail(ex).getOrThrow) == Result.fail(ex))
@@ -418,7 +418,7 @@ class ResultTest extends Test:
 
     "exception" - {
         "only available if E is Throwable" in {
-            assertDoesNotCompile("Result.Failure(1).exception")
+            typeCheckProbe("Result.Failure(1).exception")
         }
         "from Failure" in {
             val ex = new Exception
@@ -453,7 +453,7 @@ class ResultTest extends Test:
             "fails to compile for non-Throwable error" in {
                 val failure: Result[String, Int] = Failure("Something went wrong")
                 val _                            = failure
-                assertDoesNotCompile("failure.toTry")
+                typeCheckProbe("failure.toTry")
             }
         }
 

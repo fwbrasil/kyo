@@ -8,8 +8,8 @@ private[kyo] trait BaseKyoDataTest:
 
     type Assertion
 
-    def assertionSuccess: Assertion
-    def assertionFailure(msg: String): Assertion
+    inline def assertionSuccess: Assertion
+    inline def assertionFailure(msg: String): Assertion
 
     given [A]: CanEqual[Try[A], Try[A]]                = CanEqual.derived
     given [A, B]: CanEqual[Either[A, B], Either[A, B]] = CanEqual.derived
@@ -24,11 +24,17 @@ private[kyo] trait BaseKyoDataTest:
                 Result.panic(new RuntimeException("Compilation failed", cause))
     end typeCheck
 
+    inline def typeCheckProbe(inline code: String): Assertion =
+        typeCheck(code) match
+            case Result.Failure(typeCheckErrors) => assertionFailure(s"Type check probe errors: \n$typeCheckErrors")
+            case Result.Panic(exception)         => assertionFailure(exception.getMessage)
+            case Result.Success(_)               => assertionFailure("Code type-checked successfully, expected a failure")
+
     inline def typeCheckFailure(inline code: String)(inline error: String): Assertion =
         typeCheck(code) match
-            case Result.Failure(errors) =>
-                if errors.contains(error) && !error.isEmpty() then assertionSuccess
-                else assertionFailure(s"Predicate not satisfied by $errors")
+            case Result.Failure(typeCheckErrors) =>
+                if typeCheckErrors.contains(error) && !error.isEmpty() then assertionSuccess
+                else assertionFailure(s"Type check error '$error' not found: $typeCheckErrors")
             case Result.Panic(exception) => assertionFailure(exception.getMessage)
             case Result.Success(_)       => assertionFailure("Code type-checked successfully, expected a failure")
 

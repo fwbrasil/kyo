@@ -200,8 +200,9 @@ class InstantTest extends Test:
         }
 
         "unsupported unit" in {
-            assertDoesNotCompile("instant.truncatedTo(Duration.Units.Weeks)")
-            assertDoesNotCompile("instant.truncatedTo(Duration.Units.Months)")
+            val error = "kyo.Duration.Truncatable"
+            typeCheckFailure("Instant.Min.truncatedTo(Duration.Units.Weeks)")(error)
+            typeCheckFailure("Instant.Min.truncatedTo(Duration.Units.Months)")(error)
         }
     }
 

@@ -291,43 +291,43 @@ class SafeClassTagTest extends Test:
     "unsupported" - {
         "generic types" - {
             "List[Int]" in {
-                assertDoesNotCompile("SafeClassTag[List[Int]]")
+                typeCheckProbe("SafeClassTag[List[Int]]")
             }
 
             "Option[String]" in {
-                assertDoesNotCompile("SafeClassTag[Option[String]]")
+                typeCheckProbe("SafeClassTag[Option[String]]")
             }
 
             "Map[String, Int]" in {
-                assertDoesNotCompile("SafeClassTag[Map[String, Int]]")
+                typeCheckProbe("SafeClassTag[Map[String, Int]]")
             }
 
             "generic class" in {
                 class Generic[T]
-                assertDoesNotCompile("SafeClassTag[Generic[Int]]")
+                typeCheckProbe("SafeClassTag[Generic[Int]]")
             }
 
             "generic trait" in {
                 trait GenericTrait[T]
-                assertDoesNotCompile("SafeClassTag[GenericTrait[String]]")
+                typeCheckProbe("SafeClassTag[GenericTrait[String]]")
             }
         }
 
         "Null type" - {
             "Null" in {
-                assertDoesNotCompile("SafeClassTag[Null]")
+                typeCheckProbe("SafeClassTag[Null]")
             }
 
             "Null in union" in {
-                assertDoesNotCompile("SafeClassTag[String | Null]")
+                typeCheckProbe("SafeClassTag[String | Null]")
             }
 
             "Null in intersection" in {
-                assertDoesNotCompile("SafeClassTag[Any & Null]")
+                typeCheckProbe("SafeClassTag[Any & Null]")
             }
 
             "Complex type with Null" in {
-                assertDoesNotCompile("SafeClassTag[(String | Int) & (Double | Null)]")
+                typeCheckProbe("SafeClassTag[(String | Int) & (Double | Null)]")
             }
         }
     }

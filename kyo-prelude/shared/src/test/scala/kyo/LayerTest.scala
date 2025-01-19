@@ -149,45 +149,45 @@ class LayerTest extends Test:
     }
     "make" - {
         "none" in {
-            assertDoesNotCompile("""Layer.init[String]()""")
+            typeCheckProbe("""Layer.init[String]()""")
         }
         "missing Target" in {
             val a = Layer(true)
             discard(a)
-            assertDoesNotCompile("""Layer.init(a)""")
+            typeCheckProbe("""Layer.init(a)""")
         }
         "circular dependency" in {
             val a = Layer.from((s: String) => s.size)
             val b = Layer.from((i: Int) => (i % 2 == 0))
             val c = Layer.from((b: Boolean) => b.toString)
             discard(a, b, c)
-            assertDoesNotCompile("""Layer.init[String](a, b, c)""")
+            typeCheckProbe("""Layer.init[String](a, b, c)""")
         }
         "missing input" in {
             val a = Layer.from((s: String) => s.size)
             val b = Layer.from((i: Int) => i % 2 == 0)
             discard(a, b)
-            assertDoesNotCompile("""Layer.init[Boolean](a, b)""")
+            typeCheckProbe("""Layer.init[Boolean](a, b)""")
         }
         "missing multiple inputs" in {
             val a = Layer.from((s: String) => s.isEmpty)
             val b = Layer.from((i: Int) => i.toDouble)
             val c = Layer.from((_: Boolean, _: Double) => 'c')
             discard(a, b, c)
-            assertDoesNotCompile("""Layer.init[Char](a, b, c)""")
+            typeCheckProbe("""Layer.init[Char](a, b, c)""")
         }
         "missing output" in {
             val a = Layer(42)
             val b = Layer.from((i: Int) => i.toDouble)
             val c = Layer.from((d: Double) => d.toLong)
             discard(a, b, c)
-            assertDoesNotCompile("""Layer.init[String](a, b, c)""")
+            typeCheckProbe("""Layer.init[String](a, b, c)""")
         }
         "ambigious input" in {
             val a = Layer(42)
             val b = Layer(42)
             discard(a, b)
-            assertDoesNotCompile("""Layer.init[Int](a, b)""")
+            typeCheckProbe("""Layer.init[Int](a, b)""")
         }
         "complex layer" in run {
             val s = Layer("Start")
@@ -230,12 +230,12 @@ class LayerTest extends Test:
             val b = Layer(true)
             val c = Layer(0)
             discard(a, b, c)
-            assertDoesNotCompile("""Layer.init[String](a, b, c)""")
+            typeCheckProbe("""Layer.init[String](a, b, c)""")
         }
     }
     "runLayer" - {
         "no layer" in {
-            assertDoesNotCompile("""Env.runLayer()(Env.get[Boolean])""")
+            typeCheckProbe("""Env.runLayer()(Env.get[Boolean])""")
         }
         "one layer" in run {
             class Foo:
@@ -265,7 +265,7 @@ class LayerTest extends Test:
             val c = Layer('c')
             val d = Layer.from((c: Char) => c.isDigit)
             discard(c, d)
-            assertDoesNotCompile("""Env.runLayer(c, d)(Env.get[String])""")
+            typeCheckProbe("""Env.runLayer(c, d)(Env.get[String])""")
         }
         "intersection" in run {
             Memo.run(Env.runLayer(Layer(42), Layer("hello"))(Env.get[Int].map(_ => Env.get[String]).map(_ => succeed)))
