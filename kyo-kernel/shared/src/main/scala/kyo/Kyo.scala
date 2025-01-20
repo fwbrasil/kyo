@@ -3,6 +3,8 @@ package kyo
 import kernel.Loop
 import kyo.kernel.internal.Safepoint
 import scala.annotation.tailrec
+import scala.collection.mutable.Builder
+import scala.reflect.ClassTag
 
 /** Object containing utility functions for working with Kyo effects. */
 object Kyo:
@@ -79,21 +81,21 @@ object Kyo:
             case 0 => Chunk.empty
             case 1 => f(seq(0)).map(Chunk(_))
             case _ =>
-                seq match
-                    case seq: List[A] =>
-                        Loop(seq, Chunk.empty[B]) { (seq, acc) =>
-                            seq match
-                                case Nil          => Loop.done(acc)
-                                case head :: tail => f(head).map(u => Loop.continue(tail, acc.append(u)))
-                        }
-                    case seq =>
-                        val indexed = toIndexed(seq)
-                        val size    = indexed.size
-                        Loop.indexed(Chunk.empty[B]) { (idx, acc) =>
-                            if idx == size then Loop.done(acc)
-                            else f(indexed(idx)).map(u => Loop.continue(acc.append(u)))
-                        }
-                end match
+                var suspended = false
+                val result =
+                    Chunk.Indexed.foreach(seq) { a =>
+                        val v = f(a)
+                        suspended ||= v.evalNow.isEmpty
+                        v
+                    }
+                if !suspended then
+                    result.asInstanceOf[Chunk[B]]
+                else
+                    Loop.indexed(Chunk.empty[B]) { (idx, acc) =>
+                        if idx == result.size then Loop.done(acc)
+                        else result(idx).map(u => Loop.continue(acc.append(u)))
+                    }
+                end if
     end foreach
 
     /** Applies an effect-producing function to each element of a sequence along with its index.
@@ -166,34 +168,56 @@ object Kyo:
       * @return
       *   A new effect that produces a Chunk of filtered elements
       */
-    def filter[A, S, S2](seq: Seq[A])(f: Safepoint ?=> A => Boolean < S2)(using Frame, Safepoint): Chunk[A] < (S & S2) =
+    def filter[A, S](seq: Seq[A])(f: Safepoint ?=> A => Boolean < S)(using Frame, Safepoint): Chunk[A] < S =
         seq.knownSize match
             case 0 => Chunk.empty
+            case 1 =>
+                val a = seq(0)
+                f(a).map(b => if b then Chunk(a) else Chunk.empty)
             case _ =>
-                seq match
-                    case seq: List[A] =>
-                        Loop(seq, Chunk.empty[A]) { (seq, acc) =>
-                            seq match
-                                case Nil => Loop.done(acc)
-                                case head :: tail =>
-                                    f(head).map {
-                                        case true  => Loop.continue(tail, acc.append(head))
-                                        case false => Loop.continue(tail, acc)
-                                    }
-                        }
-                    case seq =>
-                        val indexed = toIndexed(seq)
-                        Loop.indexed(Chunk.empty[A]) { (idx, acc) =>
-                            if idx == indexed.size then Loop.done(acc)
-                            else
-                                val curr = indexed(idx)
-                                f(curr).map {
-                                    case true  => Loop.continue(acc.append(curr))
-                                    case false => Loop.continue(acc)
-                                }
-                        }
-                end match
-    end filter
+                val size       = seq.size
+                val values     = (new Array[Any](size)).asInstanceOf[Array[A]]
+                val predicates = (new Array[Any](size)).asInstanceOf[Array[Boolean < S]]
+                var suspended  = false
+                var filtered   = 0
+                var idx        = 0
+
+                seq.foreach { a =>
+                    val p = f(a)
+                    values(idx) = a
+                    predicates(idx) = p
+                    p.evalNow match
+                        case Present(b) =>
+                            if b then filtered += 1
+                        case Absent =>
+                            suspended = true
+                    end match
+                    idx += 1
+                }
+
+                if !suspended then
+                    if filtered == size then
+                        Chunk.fromNoCopy(values)
+                    else
+                        val result = (new Array[Any](filtered)).asInstanceOf[Array[A]]
+                        @tailrec def build(i: Int, j: Int): Unit =
+                            if i < size then
+                                if predicates(i).asInstanceOf[Boolean] then
+                                    result(j) = values(i)
+                                    build(i + 1, j + 1)
+                                else
+                                    build(i + 1, j)
+                        build(0, 0)
+                        Chunk.fromNoCopy(result)
+                else
+                    Loop.indexed(Chunk.empty[A]) { (idx, acc) =>
+                        if idx == size then Loop.done(acc)
+                        else
+                            predicates(idx).map(b =>
+                                Loop.continue(if b then acc.append(values(idx)) else acc)
+                            )
+                    }
+                end if
 
     /** Folds over a sequence with an effect-producing function.
       *

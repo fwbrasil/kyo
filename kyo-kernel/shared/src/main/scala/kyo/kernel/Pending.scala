@@ -190,7 +190,7 @@ object `<`:
             f6(pipe6)
         end pipe
 
-        private[kyo] inline def evalNow(using inline flat: Flat[A]): Maybe[A] =
+        private[kyo] inline def evalNow: Maybe[A] =
             v match
                 case kyo: Kyo[?, ?] => Maybe.empty
                 case v              => Maybe(v.asInstanceOf[A])

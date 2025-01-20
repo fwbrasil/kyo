@@ -316,6 +316,44 @@ sealed abstract class Chunk[+A]
             Compact(unnested)
     end flattenChunk
 
+    final override def foreach[B](f: A => B): Unit =
+        @tailrec def loop(c: Chunk[A], dropLeft: Int, dropRight: Int): Unit =
+            if !c.isEmpty then
+                c match
+                    case c: Compact[A] @unchecked =>
+                        val arr = c.array
+                        val len = arr.length
+                        var i   = dropLeft
+                        while i < len - dropRight do
+                            discard(f(arr(i)))
+                            i += 1
+
+                    case c: FromSeq[A] @unchecked =>
+                        val seq = c.value
+                        val len = seq.length
+                        var i   = dropLeft
+                        while i < len - dropRight do
+                            discard(f(seq(i)))
+                            i += 1
+
+                    case c: Tail[A] @unchecked =>
+                        loop(c.chunk, dropLeft + c.offset, dropRight)
+
+                    case Drop(chunk, left, right, _) =>
+                        loop(chunk, dropLeft + left, dropRight + right)
+
+                    case Append(chunk, value, len) =>
+                        if dropRight > 0 then
+                            loop(chunk, dropLeft, dropRight - 1)
+                        else if dropLeft >= len - 1 then
+                            discard(f(value))
+                        else
+                            discard(f(value))
+                            loop(chunk, dropLeft, dropRight)
+
+        loop(self, 0, 0)
+    end foreach
+
     /** Copies the elements of this Chunk to an array.
       *
       * @param array
@@ -487,6 +525,12 @@ object Chunk extends StrictOptimizedSeqFactory[Chunk]:
                         val array = source.iterator.toArray(using erasedTag[A])
                         if array.isEmpty then empty[A]
                         else Compact(array)
+
+        def foreach[A, B](source: IterableOnce[A])(f: A => B): Indexed[B] =
+            val array = source.iterator.map(f).toArray(using erasedTag[B])
+            if array.isEmpty then empty[B]
+            else Compact(array)
+        end foreach
 
         def newBuilder[A]: collection.mutable.Builder[A, Indexed[A]] = ChunkBuilder.init[A]
     end Indexed

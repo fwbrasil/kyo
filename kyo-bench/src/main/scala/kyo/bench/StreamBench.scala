@@ -1,5 +1,8 @@
 package kyo.bench
 
+object ttt extends App:
+    println((new StreamBench).forkKyo(null))
+
 class StreamBench extends Bench.SyncAndFork(25000000):
 
     val seq = (0 until 10000).toVector
